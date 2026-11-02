@@ -1,17 +1,43 @@
 FROM kalilinux/kali-rolling
 
-# Railway will override PORT; keep a local default
 ENV PORT=7681
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install required Linux packages
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-     ca-certificates wget curl git python3 python3-pip tini fastfetch
+     ca-certificates \
+     wget \
+     curl \
+     git \
+     python3 \
+     python3-pip \
+     xz-utils \
+     ffmpeg \
+     yt-dlp \
+     tini \
+     fastfetch \
+  && rm -rf /var/lib/apt/lists/*
 
-# Ensure the target dir exists
-RUN mkdir -p /usr/local/bin
+# Install Node.js 24.21.0
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      x86_64) node_arch="x64" ;; \
+      aarch64) node_arch="arm64" ;; \
+      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-${node_arch}.tar.xz" \
+      | tar -xJ --strip-components=1 -C /usr/local; \
+    node -v; \
+    npm -v
 
-# Install latest ttyd (pick correct binary for the CPU)
+# Verify installed tools
+RUN python3 --version \
+  && yt-dlp --version \
+  && ffmpeg -version
+
+# Install latest ttyd
 RUN set -eux; \
     arch="$(uname -m)"; \
     case "$arch" in \
@@ -19,14 +45,16 @@ RUN set -eux; \
       aarch64|arm64) ttyd_asset="ttyd.aarch64" ;; \
       *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
-    wget -qO /usr/local/bin/ttyd "https://github.com/tsl0922/ttyd/releases/latest/download/${ttyd_asset}" \
-    && chmod +x /usr/local/bin/ttyd
+    wget -qO /usr/local/bin/ttyd \
+      "https://github.com/tsl0922/ttyd/releases/latest/download/${ttyd_asset}"; \
+    chmod +x /usr/local/bin/ttyd
 
-# Show system info on shell start (fastfetch)
+RUN mkdir -p /usr/local/bin
+
 RUN echo "fastfetch || true" >> /root/.bashrc
 
 EXPOSE 7681
 
-ENTRYPOINT ["/usr/bin/tini","--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
-CMD ["/bin/bash","-lc", "/usr/local/bin/ttyd --writable -i 0.0.0.0 -p ${PORT} -c ${USERNAME}:${PASSWORD} /bin/bash"]
+CMD ["/bin/bash", "-lc", "/usr/local/bin/ttyd --writable -i 0.0.0.0 -p ${PORT} -c ${USERNAME}:${PASSWORD} /bin/bash"]
